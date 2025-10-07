@@ -1,0 +1,73 @@
+// routes/resources.js
+const express = require('express');
+const router = express.Router();
+const Resource = require('../models/Resource');
+const authMiddleware = require('../middleware/authMiddleware');
+
+// Add a new resource (Protected)
+router.post('/', authMiddleware, async (req, res) => {
+  try {
+    const { title, type, difficulty, rating, notes } = req.body;
+    const resource = new Resource({
+      title,
+      type,
+      difficulty,
+      rating,
+      notes,
+      owner: req.user.id
+    });
+    await resource.save();
+    res.status(201).json(resource);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error adding resource' });
+  }
+});
+
+// Get all resources for a user
+router.get('/', authMiddleware, async (req, res) => {
+  try {
+    const resources = await Resource.find({ owner: req.user.id });
+    res.json(resources);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error fetching resources' });
+  }
+});
+
+// Delete a resource
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const resource = await Resource.findOneAndDelete({ _id: req.params.id, owner: req.user.id });
+    if (!resource) return res.status(404).json({ message: 'Not found or not authorized' });
+    res.json({ message: 'Resource deleted' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error deleting resource' });
+  }
+});
+
+// Compute statistics (Protected)
+router.get('/stats', authMiddleware, async (req, res) => {
+  try {
+    const resources = await Resource.find({ owner: req.user.id });
+    if (resources.length === 0) return res.json({ message: 'No data' });
+
+    const ratings = resources.map(r => r.rating || 0);
+    const mean = ratings.reduce((a, b) => a + b, 0) / ratings.length;
+    const variance = ratings.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / ratings.length;
+    const stdDev = Math.sqrt(variance);
+
+    res.json({
+      count: ratings.length,
+      mean: mean.toFixed(2),
+      variance: variance.toFixed(2),
+      standardDeviation: stdDev.toFixed(2)
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error computing stats' });
+  }
+});
+
+module.exports = router;
